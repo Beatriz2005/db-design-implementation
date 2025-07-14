@@ -1,0 +1,39 @@
+-- Procedure 1: CadastrarNovoUsuarioCompleto
+-- O cadastro de um usuário é uma operação em duas etapas (inserir em USUARIO e depois em USUARIOCOMUM ou ORGAOPUBLICO). O Procedure faz as duas etapas, garantindo a integridade dos dados.
+CREATE OR REPLACE PROCEDURE CadastrarNovoUsuarioCompleto(
+    p_usuario VARCHAR(50),
+    p_nome VARCHAR(255),
+    p_email VARCHAR(255),
+    p_senha VARCHAR(255),
+    p_tipo_usuario tipo_usuario,
+    p_tipo_permissao tipo_permissao,
+    p_cpf CHAR(11) DEFAULT NULL,
+    p_cnpj CHAR(14) DEFAULT NULL,
+    INOUT p_id_usuario_criado INTEGER DEFAULT NULL -- Parâmetro de saída para retornar o ID
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Validação para garantir que o email ou nome de usuário não existam (são campos UNIQUE)
+    IF EXISTS (SELECT 1 FROM USUARIO WHERE email = p_email) THEN
+        RAISE EXCEPTION 'O email informado já está em uso: %', p_email;
+    END IF;
+    IF EXISTS (SELECT 1 FROM USUARIO WHERE usuario = p_usuario) THEN
+        RAISE EXCEPTION 'O nome de usuário informado já está em uso: %', p_usuario;
+    END IF;
+
+    -- Inserir na tabela principal USUARIO e obter o ID de retorno no parâmetro de saída
+    INSERT INTO USUARIO (usuario, nome, email, senha, cpf, cnpj, tipo_usuario, tipo_permissao)
+    VALUES (p_usuario, p_nome, p_email, p_senha, p_cpf, p_cnpj, p_tipo_usuario, p_tipo_permissao)
+    RETURNING id_usuario INTO p_id_usuario_criado;
+
+    -- Inserir na tabela de subtipo correspondente (disjunto)
+    IF p_tipo_usuario = 'USUARIO_COMUM' THEN
+        INSERT INTO USUARIOCOMUM (id_usuario) VALUES (p_id_usuario_criado);
+    ELSIF p_tipo_usuario = 'ORGAO_PUBLICO' THEN
+        INSERT INTO ORGAOPUBLICO (id_usuario) VALUES (p_id_usuario_criado);
+    ELSE
+        RAISE EXCEPTION 'Tipo de usuário desconhecido: %', p_tipo_usuario;
+    END IF;
+END;
+$$;
